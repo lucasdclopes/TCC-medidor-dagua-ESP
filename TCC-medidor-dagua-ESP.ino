@@ -11,9 +11,9 @@
 
 //Configurações do WIFI
 //nome da rede WIFI
-//const char *ssid = "bacon";
+//const char *ssid = "seu ssid";
 //senha da rede WIFI
-//const char *password = "Chedd4r!";
+//const char *password = "sua senha";
 
 //Endereço do servidor da Amazon, que é responsável por armazenar os logs e disparar os alertas
 const char *serverAddr = "http://192.168.15.53:8080/tcc-medidor-dagua/api/medicao"; 
@@ -47,7 +47,7 @@ void setup(void) {
   
     //Gerenciador de wifi, para não ter que usar hardcoded
   WiFiManager wifiManager;
-  wifiManager.autoConnect("ESP32-PI6");
+  wifiManager.autoConnect("ESP32-TCC-UNVP");
 
   //Escreve na porta serial o IP com que se conectou na rede wifi
   Serial.print("IP address: ");
