@@ -18,7 +18,7 @@
 //Endereço do servidor da Amazon, que é responsável por armazenar os logs e disparar os alertas
 const char *serverAddr = "http://192.168.15.53:8080/tcc-medidor-dagua/api/medicao"; 
 
-const int relay_in1 = 4;
+const int rele_in1 = 4;
 
 //armazena, em milésimos de segundos, a quanto tempo o programa foi executado
 unsigned int lastTime = 0;
@@ -27,27 +27,28 @@ unsigned int timer_Delay_Minimo = 1000;
 //frequência máxima com que o programa pode ser executado
 unsigned int timerDelay = timer_Delay_Minimo;
 
-//quanto tempo faz que o relay foi desligado ou ligado (ms). Usado para evitar que o relay fique ligando e desligando toda hora
-unsigned int relay_ultimaAlteracao = 0;
-//em milésimos de segundos, a frequência máxima com que o estado do relay pode ser alterado.
-unsigned int relay_intervalo_Minimo = 5000;
+//quanto tempo faz que o relé foi desligado ou ligado (ms). Usado para evitar que o relé fique ligando e desligando toda hora
+unsigned int rele_ultimaAlteracao = 0;
+//em milésimos de segundos, a frequência máxima com que o estado do relé pode ser alterado.
+unsigned int rele_intervalo_Minimo = 7000;
 
-//inicializa o sensor ultrassonico
+//Inicializa o sensor hipersônico, definindo quais os pinos de comunicação
+//Faz isto fora do setup pois preciso utilizar a referencia ao objeto no loop
 Ultrasonic ultrasonic(TRIGGER_PIN, ECHO_PIN);
 
 //Este método é executado quando o dispositivo é ligado
 void setup(void) {
 
-  //Inicializa a comunicação com a porta serial 115200, caso esteja ligado em um computador 
+  //Inicializa a comunicação com a porta serial 115200, 
+  //caso esteja ligado em um computador 
   Serial.begin(115200);
 
-  //Inicializa o relé com este desligado
-  digitalWrite(relay_in1, HIGH);
-  pinMode(relay_in1, OUTPUT);
+  //Inicializa o relé
+  pinMode(rele_in1, OUTPUT);
   
-    //Gerenciador de wifi, para não ter que usar hardcoded
+  //Gerenciador de wifi, para não ter que usar rede e senha hardcoded
   WiFiManager wifiManager;
-  wifiManager.autoConnect("ESP32-PI6");
+  wifiManager.autoConnect("ESP32-TCC");
 
   //Escreve na porta serial o IP com que se conectou na rede wifi
   Serial.print("IP address: ");
@@ -70,19 +71,21 @@ void loop(void) {
     return;
   }
 
-  //float distancia = ultrasonic.afstandCM();
-  float distancia = ultrasonic.read(CM); 
-  char strDistancia[5] = "";
-  snprintf(strDistancia,sizeof(strDistancia),"%.2f",distancia);
-  Serial.println(strDistancia);
-  
-  //Declara o HTTPClient. Este objeto serve para executar requisições HTTP
-  HTTPClient http;
-  
-  //Configura o endereço do servidor
-  http.begin(serverAddr);
+  //leitura da distância obtida pela sensor hipersônico 
+  int distancia = ultrasonic.read(CM); 
 
-  //Configura os cabeçalhos da requisição HTTP. No caso, para informar que é uma requisição com um payload do tipo JSON
+  /*
+  //código para debugar na porta serial o valor do sensor. Desnecessário na "produção"
+  char strDistancia[5] = "";
+  snprintf(strDistancia,sizeof(strDistancia),"%d",distancia);
+  Serial.println(strDistancia);
+  */
+  
+  //Configura o cliente HTTP, que irá se comunicar com a aplicação Java
+  HTTPClient http;
+  http.begin(serverAddr); //serverAddr contém o endereço da aplicação
+
+  //Configura os cabeçalhos da requisição HTTP, para iinformar que é uma requisição com um payload do tipo JSON
   http.addHeader("Content-Type", "application/json");
 
   //Variável que armazenará o JSON. Esta pode armazenar, no máximo 60 caracteres. É mais do que o suficiente para o payload que será montado.
@@ -90,10 +93,10 @@ void loop(void) {
 
   /*
     Monta a String com o payload e o armazena na variável json, usando a função snprintf
-    %.2f é o tipo de formatação. Indica que o valor é do tipo float, com duas casas decimais
-    O Json ficará, por exemplo, desta forma: {"vlDistancia": 10.55 }
+    %d é o tipo de formatação. Indica que o valor é do tipo int de base 10
+    O Json ficará, por exemplo, desta forma: {"vlDistancia": 21 }
   */
-  snprintf(json,sizeof(json),"{\"vlDistancia\": %.2f }",distancia);
+  snprintf(json,sizeof(json),"{\"vlDistancia\": %d }",distancia);
   
   //Envia uma requisição HTTP, com verbo POST, para o servidor, contendo o payload JSON montando anteriormente, aguarda a resposta do servidor.
   Serial.println("Invocando WS");
@@ -116,7 +119,7 @@ void loop(void) {
     Serial.println("timerDelay: ");
     Serial.println(timerDelay);
 
-    setarRelay(distancia,nivelRele);
+    configurarRele(distancia,nivelRele);
 
   } else {
     Serial.println("Response com erro: ");
@@ -135,7 +138,8 @@ void loop(void) {
   
   //Carrega o momento em que a execução foi executada. 
   lastTime = millis();
-  
+  //pausa o processamento por alguns instantes para evitar o consumo desnecessário de recursos
+  delay(100);
 }
 
 //faz o processamento do retorno do servidor. Como http é um objeto, deve-se passar uma referencia com o keyword &
@@ -155,38 +159,38 @@ void processarResponseServidorOK(HTTPClient &http, JsonDocument &doc){
 }
 
 
-void setarRelay(float distancia, float nivelRele){
+void configurarRele(float distancia, float nivelRele){
 
   /*
-  Verifica quanto tempo faz que o relay alterou de estaedo. Não executa o método se passou pouco tempo 
+  Verifica quanto tempo faz que o relé alterou de estaedo. Não executa o método se passou pouco tempo 
   */
-  if (!((millis() - relay_ultimaAlteracao) > relay_intervalo_Minimo)) 
+  if (!((millis() - rele_ultimaAlteracao) > rele_intervalo_Minimo)) 
     return;
-
-  Serial.println("nivelRele: ");
-  Serial.println(nivelRele);
 
   int nivelAcionamentoRele = nivelRele;
   if (nivelAcionamentoRele == -1) //-1 indica que não tem alerta para acionar o dispositivo, sai do método
     return;
 
-  int relayState = digitalRead(relay_in1);
-  Serial.println("relayState: ");
-  Serial.println(relayState);
-  if ( distancia > nivelAcionamentoRele ){
-    if (relayState == LOW) //já está LOW, nem roda o write
+  //Lê o estado atual do rele
+  int releState = digitalRead(rele_in1);
+
+  //se a distancia do sensor até a água é maior que o nível critico, 
+  //então entra na lógica que vai ligar o relé. Ligando, assim, a bomba
+  //caso contrário, entra na lógica que vai desligar a bomba
+  if ( distancia > nivelAcionamentoRele ){ 
+    if (releState == LOW) //já está LOW, nem roda o write
       return; 
-    digitalWrite(relay_in1, LOW);
-    relay_ultimaAlteracao = millis();
-    Serial.println("Corrente passando");
+    digitalWrite(rele_in1, LOW);
+    rele_ultimaAlteracao = millis();
+    Serial.println("Corrente passando"); //debug
   } else {
-    if (relayState == HIGH) //já está HIGH, nem roda o write
+    if (releState == HIGH) //já está HIGH, nem roda o write
       return; 
-    //bota uma margem de 4 cm antes de desligar o relé, pra evitar ficar ligando / desligando constantemente por pequenas variações de nível
-    if (distancia < nivelAcionamentoRele - 4) {
-      digitalWrite(relay_in1, HIGH);
-      relay_ultimaAlteracao = millis();
-      Serial.println("Sem corrente passando");
+    //bota uma margem de 3 cm antes de desligar o relé, pra evitar ficar ligando / desligando constantemente por pequenas variações de nível
+    if (distancia < nivelAcionamentoRele - 3) {
+      digitalWrite(rele_in1, HIGH);
+      rele_ultimaAlteracao = millis();
+      Serial.println("Sem corrente passando"); //debug
     }
   }
 
