@@ -11,12 +11,12 @@
 
 //Configurações do WIFI
 //nome da rede WIFI
-//const char *ssid = "seu ssid";
+//const char *ssid = "seu ssid";                                           
 //senha da rede WIFI
 //const char *password = "sua senha";
 
 //Endereço do servidor da Amazon, que é responsável por armazenar os logs e disparar os alertas
-const char *serverAddr = "http://192.168.15.53:8080/tcc-medidor-dagua/api/medicao"; 
+const char *serverAddr = "http://54.207.176.200:8080/tcc-medidor-dagua/api/medicao"; 
 
 const int rele_in1 = 4;
 
@@ -36,8 +36,12 @@ unsigned int rele_intervalo_Minimo = 7000;
 //Faz isto fora do setup pois preciso utilizar a referencia ao objeto no loop
 Ultrasonic ultrasonic(TRIGGER_PIN, ECHO_PIN);
 
+bool primeiraExecucao = true;
+
 //Este método é executado quando o dispositivo é ligado
 void setup(void) {
+  
+  bool primeiraExecucao = true;
 
   //Inicializa a comunicação com a porta serial 115200, 
   //caso esteja ligado em um computador 
@@ -58,6 +62,13 @@ void setup(void) {
 //Este método é executado após o fim do setup. Sempre que é finalizado, é executado novamente.
 void loop(void) {
 
+  //pausa o processamento por alguns instantes para evitar o consumo desnecessário de recursos
+  delay(100);
+
+  if (primeiraExecucao) {
+    digitalWrite(rele_in1, HIGH);
+    primeiraExecucao = false;
+  }
   /*
   Verifica quanto tempo faz que a última execução foi feita. Se o tempo não for maior que a frequência máxima, encerra a execução do método.
   Isto é feito para evitar uma sobrecarga no servidor e no sensor
@@ -138,8 +149,6 @@ void loop(void) {
   
   //Carrega o momento em que a execução foi executada. 
   lastTime = millis();
-  //pausa o processamento por alguns instantes para evitar o consumo desnecessário de recursos
-  delay(100);
 }
 
 //faz o processamento do retorno do servidor. Como http é um objeto, deve-se passar uma referencia com o keyword &
